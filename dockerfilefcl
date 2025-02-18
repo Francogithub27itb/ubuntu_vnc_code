@@ -1,0 +1,53 @@
+# 1️⃣ Utilitzem Ubuntu 24.04 com a base
+FROM ubuntu:24.04
+
+# 2️⃣ Instal·lem paquets necessaris
+RUN apt update && apt install -y \
+    sudo \
+    openssh-server \
+    xfce4 xfce4-terminal \
+    tightvncserver \
+    curl wget nano net-tools dbus-x11 xauth x11-xserver-utils \
+    software-properties-common \
+    apt-transport-https \
+    gpg && \
+    rm -rf /var/lib/apt/lists/*
+
+# 3️⃣ Crear l'usuari "alumno" amb contrasenya i permisos sudo
+RUN useradd -m -s /bin/bash alumno && \
+    echo "alumno:alumno" | chpasswd && \
+    usermod -aG sudo alumno
+
+# 4️⃣ Configurar SSH perquè "alumno" pugui connectar-se
+RUN mkdir /run/sshd && \
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+
+# 5️⃣ Instal·lar Visual Studio Code
+RUN wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg && \
+    install -o root -g root -m 644 microsoft.gpg /usr/share/keyrings/ && \
+    sh -c 'echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list' && \
+    apt update && apt install -y code && \
+    rm -rf /var/lib/apt/lists/* microsoft.gpg
+
+# 6️⃣ Configurar VNC per a "alumno"
+USER alumno
+RUN mkdir -p /home/alumno/.vnc && \
+    echo "alumno" | vncpasswd -f > /home/alumno/.vnc/passwd && \
+    chmod 600 /home/alumno/.vnc/passwd && \
+    echo "#!/bin/bash\nxrdb $HOME/.Xresources\nstartxfce4 &" > /home/alumno/.vnc/xstartup && \
+    chmod +x /home/alumno/.vnc/xstartup
+
+# 7️⃣ Configurar VSCode per a executar-se sense sandbox
+RUN echo "alias code='code --no-sandbox --user-data-dir=/home/alumno/.vscode'" >> /home/alumno/.bashrc
+
+# 8️⃣ Tornem a root per configurar inici dels serveis
+USER root
+
+# 9️⃣ Exposem ports: SSH, VNC i Web per VNC
+EXPOSE 22 5901 6080
+
+# 🔟 Script per iniciar SSH i VNC correctament
+CMD service ssh start && \
+    sudo -u alumno vncserver :1 -geometry 1920x1080 -depth 16 && \
+    tail -F /dev/null
